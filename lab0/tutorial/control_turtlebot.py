@@ -151,12 +151,12 @@ def main(args=None):
         
         # Move forward for 2 seconds
         controller.get_logger().info('Moving forward...')
-        controller.move_forward(linear_speed=1.0, duration=2.0)
+        controller.move_forward(linear_speed=1.0, duration=20.0)
         time.sleep(0.5)  # Brief pause between commands
         
         # Turn right ~90 degrees
         controller.get_logger().info('Turning right...')
-        controller.turn_right(angular_speed=1.0, duration=1.57)
+        controller.turn_right(angular_speed=1.0, duration=20.0)
         
         controller.get_logger().info('Demo completed!')
         
