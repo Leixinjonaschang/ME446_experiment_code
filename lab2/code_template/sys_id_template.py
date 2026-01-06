@@ -14,13 +14,13 @@ class TwoLinkID:
         
         self.model = mujoco.MjModel.from_xml_path(model_path)
         self.data = mujoco.MjData(self.model)
-        self.n_dof = self.model.nv  # 从 xml 读取自由度数
+        self.n_dof = self.model.nv 
         
         # ground truth read from the robot description file
         self.ground_truth = {
             'm2': 2.0,
-            'mx2': 2.0 * 0.25, # First moment of inertia (m * lc)
-            'I2': 0.167116     # Moment of inertia around joint axis, equal to m_2*l_{c2}+I_2_com
+            'mx2': 2.0 * 0.25, 
+            'I2': 0.167116    
         }
 
     def get_analytical_regressor(self, q, dq, ddq):
@@ -64,7 +64,6 @@ class TwoLinkID:
         # Debug counters
         debug_interval = 500
         
-        # Launch passive viewer for visualization during data collection
         with mujoco.viewer.launch_passive(self.model, self.data) as viewer:
             for i in range(n_steps):
                 step_start = time.time()
@@ -90,8 +89,8 @@ class TwoLinkID:
                 
                 mujoco.mj_step(self.model, self.data)
                 
-                # Critical: Compute inverse dynamics to populate qfrc_inverse!
-                # Simulate the robot joint torque sensor.
+                # Compute inverse dynamics to populate qfrc_inverse,
+                # Equivalent to simulating the robot joint torque sensor.
                 mujoco.mj_inverse(self.model, self.data)
                 
                 # Get acceleration
@@ -105,15 +104,13 @@ class TwoLinkID:
                 history_tau.append(current_tau_id)
                 t_arr.append(t)
                 
-                # Update viewer
-                if i % 10 == 0: # Sync viewer every 10 steps to save resources
-                    viewer.sync()
+                viewer.sync()
                 
                 # Debug output
                 if i % debug_interval == 0:
                     print(f"Step {i}: q={q}, tau_id={current_tau_id:.4f}")
 
-                # Real-time synchronization
+                # synchronization for real-time visualization
                 elapsed = time.time() - step_start
                 if elapsed < dt:
                     time.sleep(dt - elapsed)
