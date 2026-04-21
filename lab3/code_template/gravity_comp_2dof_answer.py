@@ -15,9 +15,9 @@ def compute_gravity_torque_RNEA_matrix(data):
     q2 = data.qpos[1]
     
     # 2. Model parameters extracted from double_pendulum.xml
-    m1 = 1.0; 
-    m2 = 2.0; 
-    l1 = 0.5; 
+    m1 = 1.0
+    m2 = 2.0
+    l1 = 0.5
     r1 = 0.25
     r2 = 0.25
     g = 9.81

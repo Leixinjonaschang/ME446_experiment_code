@@ -3,6 +3,7 @@ import mujoco.viewer
 import numpy as np
 import time
 import matplotlib.pyplot as plt
+import argparse
 
 
 TORQUE_LIMIT =87
@@ -21,80 +22,78 @@ def pd_controller(model, data, q_target, kp, kd):
     q_current = data.qpos[:ARM_DOF]
     v_current = data.qvel[:ARM_DOF]
 
-    # TODO: compute position error and velocity error
-    error = None      # e = q_target - q_current
-    error_dot = None  # edot = 0 - v_current
+    error = q_target - q_current
+    error_dot = -v_current
 
-    # TODO: PD control law: tau_pd_raw = Kp * error + Kd * error_dot
-    tau_pd_raw = None
+    tau_pd_raw = kp * error + kd * error_dot
     tau_cmd = np.clip(tau_pd_raw, -TORQUE_LIMIT, TORQUE_LIMIT)
 
     return tau_cmd, error, tau_pd_raw
 
 
-def compute_gravity_torque(model, data):
-    """
-    Compute the joint-space gravity torque g(q) via the mass matrix.
+# def compute_gravity_torque(model, data):
+#     """
+#     Compute the joint-space gravity torque g(q) via the mass matrix.
 
-    In free fall with zero control and qvel=0, the equation of motion reduces to:
-        M(q) * qacc = -g(q)
-    Therefore:
-        g(q) = -M(q) * qacc_freefall
+#     In free fall with zero control and qvel=0, the equation of motion reduces to:
+#         M(q) * qacc = -g(q)
+#     Therefore:
+#         g(q) = -M(q) * qacc_freefall
 
-    We measure qacc_freefall by stepping the simulation with all controls and
-    external forces disabled, then multiply by the analytically-computed mass
-    matrix M(q).
+#     We measure qacc_freefall by stepping the simulation with all controls and
+#     external forces disabled, then multiply by the analytically-computed mass
+#     matrix M(q).
 
-    Args:
-        model: MuJoCo model
-        data:  MuJoCo data (qpos must already be set to the query configuration)
+#     Args:
+#         model: MuJoCo model
+#         data:  MuJoCo data (qpos must already be set to the query configuration)
 
-    Returns:
-        g_q: gravity torque for the first ARM_DOF joints
-    """
-    # ---- save state ----
-    qpos_save = data.qpos.copy()
-    qvel_save = data.qvel.copy()
-    qacc_save = data.qacc.copy()
-    ctrl_save = data.ctrl.copy()
-    qfrc_applied_save = data.qfrc_applied.copy()
-    xfrc_applied_save = data.xfrc_applied.copy()
-    act_save = data.act.copy() if model.na > 0 else None
+#     Returns:
+#         g_q: gravity torque for the first ARM_DOF joints
+#     """
+#     # ---- save state ----
+#     qpos_save = data.qpos.copy()
+#     qvel_save = data.qvel.copy()
+#     qacc_save = data.qacc.copy()
+#     ctrl_save = data.ctrl.copy()
+#     qfrc_applied_save = data.qfrc_applied.copy()
+#     xfrc_applied_save = data.xfrc_applied.copy()
+#     act_save = data.act.copy() if model.na > 0 else None
 
-    # ---- zero velocity and all external forces ----
-    data.qvel[:] = 0.0
-    data.qacc[:] = 0.0
-    data.ctrl[:] = 0.0
-    data.qfrc_applied[:] = 0.0
-    data.xfrc_applied[:] = 0.0
-    if model.na > 0:
-        data.act[:] = 0.0
+#     # ---- zero velocity and all external forces ----
+#     data.qvel[:] = 0.0
+#     data.qacc[:] = 0.0
+#     data.ctrl[:] = 0.0
+#     data.qfrc_applied[:] = 0.0
+#     data.xfrc_applied[:] = 0.0
+#     if model.na > 0:
+#         data.act[:] = 0.0
 
-    # ---- free-fall step: measure gravity-induced acceleration ----
-    mujoco.mj_step1(model, data)
-    mujoco.mj_step2(model, data)
-    qacc_free = data.qacc[:ARM_DOF].copy()
+#     # ---- free-fall step: measure gravity-induced acceleration ----
+#     mujoco.mj_step1(model, data)
+#     mujoco.mj_step2(model, data)
+#     qacc_free = data.qacc[:ARM_DOF].copy()
 
-    # ---- compute M(q) ----
-    M_full = np.zeros((model.nv, model.nv))
-    mujoco.mj_fullM(model, M_full, data.qM)
-    M = M_full[:ARM_DOF, :ARM_DOF]
+#     # ---- compute M(q) ----
+#     M_full = np.zeros((model.nv, model.nv))
+#     mujoco.mj_fullM(model, M_full, data.qM)
+#     M = M_full[:ARM_DOF, :ARM_DOF]
 
-    # ---- g(q) = -M * qacc_free ----
-    g_q = -M @ qacc_free
+#     # ---- g(q) = -M * qacc_free ----
+#     g_q = -M @ qacc_free
 
-    # ---- restore ----
-    data.qpos[:] = qpos_save
-    data.qvel[:] = qvel_save
-    data.qacc[:] = qacc_save
-    data.ctrl[:] = ctrl_save
-    data.qfrc_applied[:] = qfrc_applied_save
-    data.xfrc_applied[:] = xfrc_applied_save
-    if act_save is not None:
-        data.act[:] = act_save
-    mujoco.mj_forward(model, data)
+#     # ---- restore ----
+#     data.qpos[:] = qpos_save
+#     data.qvel[:] = qvel_save
+#     data.qacc[:] = qacc_save
+#     data.ctrl[:] = ctrl_save
+#     data.qfrc_applied[:] = qfrc_applied_save
+#     data.xfrc_applied[:] = xfrc_applied_save
+#     if act_save is not None:
+#         data.act[:] = act_save
+#     mujoco.mj_forward(model, data)
 
-    return g_q
+#     return g_q
 
 def compute_gravity_torque_rnea(model, data):
     """
@@ -129,9 +128,8 @@ def compute_gravity_torque_rnea(model, data):
     act_save = data.act.copy() if model.na > 0 else None
 
     # ---- static condition for gravity-only evaluation ----
-    # TODO: set qvel and qacc to zero for the static case
-    data.qvel[:] = None   # zero velocity
-    data.qacc[:] = None   # zero acceleration
+    data.qvel[:] = 0.0
+    data.qacc[:] = 0.0
     data.ctrl[:] = 0.0
     data.qfrc_applied[:] = 0.0
     data.xfrc_applied[:] = 0.0
@@ -142,13 +140,10 @@ def compute_gravity_torque_rnea(model, data):
     mujoco.mj_forward(model, data)
 
     # ---- run RNEA without inertial term ----
-    # TODO: call mj_rne with flg_acc=0 to get gravity term only (no M*qacc)
     rnea_result = np.zeros(model.nv, dtype=np.float64)
-    flg_acc = None
-    mujoco.mj_rne(model, data, flg_acc, rnea_result)  # replace ... with flg_acc value
+    mujoco.mj_rne(model, data, 0, rnea_result)
 
-    # TODO: extract the gravity torque for the first ARM_DOF joints
-    g_q = None  # rnea_result[:ARM_DOF]
+    g_q = rnea_result[:ARM_DOF].copy()
 
     # ---- restore original state ----
     data.qpos[:] = qpos_save
@@ -178,12 +173,10 @@ def pd_gc_controller(model, data, q_target, kp, kd):
         tau_total_raw: unclipped total torque
     """
     _, error, tau_pd_raw = pd_controller(model, data, q_target, kp, kd)
+    # tau_g = compute_gravity_torque(model, data)
+    tau_g = compute_gravity_torque_rnea(model, data)
 
-    # TODO: compute gravity torque using the RNEA static method
-    tau_g = None  # compute_gravity_torque_rnea(model, data)
-
-    # TODO: total torque = PD torque + gravity compensation torque
-    tau_total_raw = None
+    tau_total_raw = tau_pd_raw + tau_g
     tau_cmd = np.clip(tau_total_raw, -TORQUE_LIMIT, TORQUE_LIMIT)
 
     return tau_cmd, error, tau_pd_raw, tau_g, tau_total_raw
@@ -227,7 +220,7 @@ def run_experiment(model, controller_mode="pd", sim_time=15.0):
 
     with mujoco.viewer.launch_passive(model, data) as viewer:
         viewer.cam.distance = 3.0
-        viewer.cam.azimuth = 45.0
+        viewer.cam.azimuth = 120.0
         viewer.cam.elevation = -20.0
 
         while viewer.is_running():
@@ -327,13 +320,16 @@ def plot_torque_decomposition(result):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Robot Control Demo (PD vs PD+GC)")
+    parser.add_argument("--mode", choices=["pd", "pd_gc"], required=True,
+                        help="Controller mode: 'pd' for pure PD, 'pd_gc' for PD + Gravity Compensation")
+    args = parser.parse_args()
+
     model = mujoco.MjModel.from_xml_path(
         "/home/phi/Downloads/489_lab_materials/ME446_experiment_code/lab3/asset/franka_emika_panda/scene.xml"
     )
 
-    # choose "pd" or "pd_gc"
-    controller_mode = "pd_gc"
-    # controller_mode = "pd"
+    controller_mode = args.mode
 
     result = run_experiment(model, controller_mode=controller_mode, sim_time=7.0)
     plot_error(result)
